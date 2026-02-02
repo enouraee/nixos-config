@@ -5,10 +5,10 @@
   services = {
     xserver = {
       enable = true;
-      # Keyboard layouts: English (us) + Persian (fa)
-      # Switch with Alt+Caps Lock
-      xkb.layout = "us,fa";
-      xkb.options = "grp:alt_caps_toggle";
+      # Keyboard layouts: English (us) + Persian (ir)
+      # Switch with Alt+Shift
+      xkb.layout = "us,ir";
+      xkb.options = "grp:alt_shift_toggle";
     };
 
     # Auto-login to Hyprland session

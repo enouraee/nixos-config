@@ -7,7 +7,7 @@ A minimal, clean NixOS configuration with Hyprland window manager.
 - 🪟 **Hyprland** - Modern Wayland compositor with animations
 - 🔐 **LUKS encryption** - Full disk encryption using LUKS2 + argon2id
 - 🐚 **Zsh + Oh-My-Zsh** - Feature-rich shell with plugins
-- ⌨️ **Dual keyboard layouts** - English (US) + Persian (FA), switch with `Alt+Caps Lock`
+- ⌨️ **Dual keyboard layouts** - English (US) + Persian (IR), switch with `Alt+Shift`
 - 🔊 **PipeWire audio** - Modern audio stack with PulseAudio compatibility
 - 📦 **Flakes** - Reproducible configuration with Nix flakes
 
@@ -237,16 +237,16 @@ monitor=HDMI-A-1,2560x1440@144,1920x0,1
 | `Super + Shift + h/j/k/l` | Move window |
 | `Super + V` | Clipboard history |
 | `Print` | Screenshot area |
-| `Alt + Caps Lock` | Switch keyboard layout (EN/FA) |
+| `Alt + Shift` | Switch keyboard layout (EN/IR) |
 
 ### Switching Keyboard Layout
 
 The keyboard is configured with:
 - **Primary**: English (US)
-- **Secondary**: Persian (FA)
-- **Switch key**: `Alt + Caps Lock`
+- **Secondary**: Persian (IR)
+- **Switch key**: `Alt + Shift`
 
-You can see the current layout in waybar or use `hyprctl devices` to check.
+You can see the current layout in waybar or use `hyprctl getoption input:kb_layout` (or `localectl status`) to check.
 
 ## Health Check
 
@@ -264,7 +264,7 @@ This checks:
 - User/shell (zsh, oh-my-zsh)
 - Desktop (Hyprland, portals, D-Bus)
 - Audio (PipeWire, WirePlumber)
-- Keyboard (Persian layout)
+-- Keyboard (Persian layout)
 - Systemd (failed units)
 - Boot log errors
 

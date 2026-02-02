@@ -346,31 +346,55 @@ fi
 # ============================================================
 section "Input / Keyboard"
 
-# Check Hyprland keyboard config (if accessible)
-if [[ -f "$HOME/.config/hypr/hyprland.conf" ]]; then
-    if grep -q "kb_layout.*fa" "$HOME/.config/hypr/hyprland.conf" 2>/dev/null; then
+# Check Hyprland / Wayland keyboard configuration (prefer deterministic checks)
+# Order of checks:
+# 1. hyprctl getoption input:kb_layout (runtime, Wayland)
+# 2. localectl status (system X11 config)
+# 3. Hyprland config file ($HOME/.config/hypr/hyprland.conf)
+if command_exists hyprctl && [[ "$IN_GRAPHICAL" == true ]]; then
+    KB_OPT=$(hyprctl getoption input:kb_layout 2>/dev/null || true)
+    if [[ -n "$KB_OPT" ]]; then
+        if echo "$KB_OPT" | grep -qi "ir"; then
+            check_pass "Persian keyboard layout active (hyprctl getoption)"
+        else
+            check_warn "Current keyboard option: $KB_OPT" "Persian (ir) not detected"
+        fi
+    else
+        # hyprctl didn't provide the option; try localectl
+        if command_exists localectl; then
+            X11_LINE=$(localectl status 2>/dev/null | grep -i "x11 layout" || true)
+            if [[ -n "$X11_LINE" ]] && echo "$X11_LINE" | grep -qi "ir"; then
+                check_pass "Persian keyboard layout active (localectl)"
+            else
+                # Fallback to checking Hyprland config file if present
+                if [[ -f "$HOME/.config/hypr/hyprland.conf" ]] && grep -q "kb_layout.*ir" "$HOME/.config/hypr/hyprland.conf" 2>/dev/null; then
+                    check_pass "Persian keyboard configured in Hyprland (conf)"
+                else
+                    check_warn "Persian keyboard not detected" "Check modules/home/hyprland/settings.nix"
+                fi
+            fi
+        else
+            if [[ -f "$HOME/.config/hypr/hyprland.conf" ]] && grep -q "kb_layout.*ir" "$HOME/.config/hypr/hyprland.conf" 2>/dev/null; then
+                check_pass "Persian keyboard configured in Hyprland (conf)"
+            else
+                check_warn "Persian keyboard not in hyprland.conf" "Check modules/home/hyprland/settings.nix"
+            fi
+        fi
+    fi
+elif [[ -f "$HOME/.config/hypr/hyprland.conf" ]]; then
+    if grep -q "kb_layout.*ir" "$HOME/.config/hypr/hyprland.conf" 2>/dev/null; then
         check_pass "Persian keyboard configured in Hyprland"
     else
         check_warn "Persian keyboard not in hyprland.conf" "Check modules/home/hyprland/settings.nix"
     fi
 else
-    # Check via hyprctl if available
-    if command_exists hyprctl && [[ "$IN_GRAPHICAL" == true ]]; then
-        if hyprctl devices 2>/dev/null | grep -qi "fa"; then
-            check_pass "Persian keyboard layout active"
-        else
-            KB_LAYOUT=$(hyprctl devices 2>/dev/null | grep -A5 "Keyboard" | grep "keymap" | head -1 || echo "unknown")
-            check_warn "Current keyboard: $KB_LAYOUT" "Persian (fa) not detected"
-        fi
-    else
-        check_pass "Keyboard config (cannot verify outside Hyprland)"
-    fi
+    check_pass "Keyboard config (cannot verify outside Hyprland)"
 fi
 
 # X11 keyboard config
 if command_exists setxkbmap; then
     XKB_LAYOUT=$(setxkbmap -query 2>/dev/null | grep layout | awk '{print $2}')
-    if [[ "$XKB_LAYOUT" == *"fa"* ]] || [[ "$XKB_LAYOUT" == *"us,fa"* ]]; then
+    if [[ "$XKB_LAYOUT" == *"ir"* ]] || [[ "$XKB_LAYOUT" == *"us,ir"* ]]; then
         check_pass "X11 keyboard layout: $XKB_LAYOUT (includes Persian)"
     elif [[ -n "$XKB_LAYOUT" ]]; then
         check_pass "X11 keyboard layout: $XKB_LAYOUT"

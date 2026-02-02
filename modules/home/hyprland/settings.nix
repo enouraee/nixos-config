@@ -9,9 +9,9 @@
     # ====== INPUT ======
     input = {
       # Keyboard layouts: English + Persian
-      # Switch with Alt+Caps Lock
-      kb_layout = "us,fa";
-      kb_options = "grp:alt_caps_toggle";
+      # Switch with Alt+Shift
+      kb_layout = "us,ir";
+      kb_options = "grp:alt_shift_toggle";
 
       repeat_delay = 300;
       numlock_by_default = true;
