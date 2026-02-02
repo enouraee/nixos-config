@@ -41,8 +41,11 @@ MAPPER_NAME="cryptroot"              # LUKS mapper name
 
 # Get the script's directory (where the flake is)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Use a single canonical repo path for all flake operations
-REPO_DIR="${REPO_DIR:-$SCRIPT_DIR}"
+# Source repo and target install paths
+SRC_DIR="${SRC_DIR:-$SCRIPT_DIR}"
+TARGET_DIR="${TARGET_DIR:-/mnt/etc/nixos}"
+# REPO_DIR will point to the path used for flake operations; default to SRC_DIR
+REPO_DIR="${REPO_DIR:-$SRC_DIR}"
 
 log_info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
@@ -123,31 +126,9 @@ preflight_checks() {
         fi
     fi
     
-    # Check 5: Build test (optional but recommended)
+    # Check 5: Build test - will be run from the target ($TARGET_DIR) after copying configs
     if [[ "${SKIP_BUILD_TEST:-0}" != "1" ]]; then
-        log_info "Running build test (this may take a while)..."
-        echo "  Set SKIP_BUILD_TEST=1 to skip this check."
-        
-        local build_output
-        if ! build_output=$(nix build "$REPO_DIR#nixosConfigurations.$HOST.config.system.build.toplevel" -L 2>&1); then
-            log_error "PREFLIGHT FAILED: Build test failed!"
-            echo "  The configuration has errors that would cause install to fail."
-            
-            # Check for narHash mismatch in build output too
-            if echo "$build_output" | grep -q "narHash"; then
-                echo ""
-                log_error "Detected narHash mismatch during build!"
-                echo "  Your flake.lock is inconsistent with the actual inputs. Fix before installing."
-                echo "  Preferred fix: ./scripts/flake-lock-refresh.sh"
-                echo "  Or: nix flake lock --refresh"
-                exit 2
-            fi
-            
-            echo "  Fix the errors and try again."
-            failed=1
-        else
-            log_ok "Build test passed"
-        fi
+        log_warn "Build test deferred until after copying repository to $TARGET_DIR"
     else
         log_warn "Skipping build test (SKIP_BUILD_TEST=1)"
     fi
@@ -395,12 +376,67 @@ rm -f "$BACKUP_FILE"
 rm -f "$CLEANED_FILE"
 log_ok "LUKS configuration inserted and validated"
 
-# NOTE: do not copy repository to /mnt until after build/install to avoid mixing flake sources
-# We'll copy the configuration after a successful install so the installed system has the flake
+# ====== COPY CONFIG TO TARGET ======
+log_step "Copying configuration to target: $TARGET_DIR"
+rm -rf "$TARGET_DIR" || true
+mkdir -p "$TARGET_DIR"
+cp -r "$SRC_DIR"/* "$TARGET_DIR"/
+# Ensure flake.lock is copied and not regenerated
+if [[ -f "$SRC_DIR/flake.lock" ]]; then
+    cp "$SRC_DIR/flake.lock" "$TARGET_DIR/flake.lock"
+fi
+log_ok "Configuration copied to $TARGET_DIR"
+
+# From now on, use the copied tree for build/install to avoid narHash mismatches
+REPO_DIR="$TARGET_DIR"
+
+# Function: try build, on narHash failure run nix flake lock --refresh in $REPO_DIR and retry once
+build_with_lock_refresh() {
+    local target="$1"
+    local host="$2"
+    local attempt=1
+    local max_attempts=2
+    local build_output
+
+    while (( attempt <= max_attempts )); do
+        if build_output=$(nix build "${target}#nixosConfigurations.${host}.config.system.build.toplevel" -L 2>&1); then
+            echo "$build_output" >/dev/null
+            return 0
+        else
+            if echo "$build_output" | grep -q "narHash"; then
+                if (( attempt == 1 )); then
+                    log_warn "narHash mismatch detected during build; attempting 'nix flake lock --refresh' in $target"
+                    (cd "$target" && nix flake lock --refresh) || true
+                    attempt=$((attempt + 1))
+                    continue
+                else
+                    log_error "Build failed after lock refresh. Showing last 50 lines of build output:"
+                    echo "$build_output" | tail -n 50
+                    return 2
+                fi
+            else
+                log_error "Build failed:"
+                echo "$build_output" | tail -n 50
+                return 1
+            fi
+        fi
+    done
+}
 
 # ====== STEP 8: Install NixOS ======
 log_step "Step 8/8: Installing NixOS (this may take a while)..."
 echo ""
+# Run build with lock-refresh handling from the copied target
+if [[ "${SKIP_BUILD_TEST:-0}" != "1" ]]; then
+    if ! build_with_lock_refresh "$REPO_DIR" "$HOST"; then
+        log_error "Build failed; aborting installation."
+        exit 1
+    fi
+else
+    log_warn "Skipping build test prior to install (SKIP_BUILD_TEST=1)"
+fi
+
+# Proceed to install using the built flake at $REPO_DIR
 nixos-install --flake "$REPO_DIR#$HOST" --no-root-passwd
 
 # ====== STEP 9: Set passwords ======
