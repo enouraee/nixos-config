@@ -95,10 +95,12 @@ preflight_checks() {
         if echo "$metadata_output" | grep -q "narHash"; then
             echo ""
             log_error "Detected narHash mismatch in flake.lock!"
-            echo "  Your flake.lock is inconsistent with the actual inputs. Fix before installing."
-            echo "  Preferred fix: ./scripts/flake-lock-refresh.sh"
-            echo "  Or: nix flake lock --refresh"
-            echo "  After fixing, re-run this installer."
+            echo "  Your flake.lock is inconsistent with the actual inputs."
+            echo ""
+            echo "  FIX THIS BEFORE RUNNING THE INSTALLER:"
+            echo "    cd $SCRIPT_DIR && nix flake lock --refresh"
+            echo ""
+            echo "  The installer will NOT auto-fix this to ensure reproducibility."
             exit 2
         fi
 
@@ -311,9 +313,6 @@ mkdir -p "$TARGET_DIR/hosts/$HOST"
 cp /tmp/hardware-config.nix "$TARGET_DIR/hosts/$HOST/hardware-configuration.nix"
 log_ok "Hardware configuration copied to $TARGET_DIR/hosts/$HOST/hardware-configuration.nix"
 
-# From now on use the copied tree for build/install
-REPO_DIR="$TARGET_DIR"
-
 # ====== STEP 7: Replace LUKS UUID placeholder ======
 log_step "Step 7/8: Configuring LUKS UUID..."
 
@@ -343,54 +342,31 @@ fi
 sed -i "s/__LUKS_UUID_PLACEHOLDER__/$LUKS_UUID/g" "$HOST_FILE"
 log_ok "LUKS UUID configured in $HOST_FILE"
 
-# Function: try build, on narHash failure run nix flake lock --refresh in $REPO_DIR and retry once
-build_with_lock_refresh() {
-    local target="$1"
-    local host="$2"
-    local attempt=1
-    local max_attempts=2
-    local build_output
-
-    while (( attempt <= max_attempts )); do
-        if build_output=$(nix build "${target}#nixosConfigurations.${host}.config.system.build.toplevel" -L 2>&1); then
-            echo "$build_output" >/dev/null
-            return 0
-        else
-            if echo "$build_output" | grep -q "narHash"; then
-                if (( attempt == 1 )); then
-                    log_warn "narHash mismatch detected during build; attempting 'nix flake lock --refresh' in $target"
-                    (cd "$target" && nix flake lock --refresh) || true
-                    attempt=$((attempt + 1))
-                    continue
-                else
-                    log_error "Build failed after lock refresh. Showing last 50 lines of build output:"
-                    echo "$build_output" | tail -n 50
-                    return 2
-                fi
-            else
-                log_error "Build failed:"
-                echo "$build_output" | tail -n 50
-                return 1
-            fi
-        fi
-    done
-}
+# Set evaluation directory to TARGET_DIR (contains UUID-substituted config)
+EVAL_DIR="$TARGET_DIR"
 
 # ====== STEP 8: Install NixOS ======
 log_step "Step 8/8: Installing NixOS (this may take a while)..."
 echo ""
-# Run build with lock-refresh handling from the copied target
+
+# Build and install from TARGET_DIR which has the correct LUKS UUID
+# WARNING: Do not run 'nix flake lock' here - if narHash mismatch occurs,
+# user must fix flake.lock BEFORE running the installer
 if [[ "${SKIP_BUILD_TEST:-0}" != "1" ]]; then
-    if ! build_with_lock_refresh "$REPO_DIR" "$HOST"; then
-        log_error "Build failed; aborting installation."
+    log_info "Building NixOS configuration from $EVAL_DIR..."
+    if ! nix build "$EVAL_DIR#nixosConfigurations.$HOST.config.system.build.toplevel" -L; then
+        log_error "Build failed. Check flake.nix and try again."
+        log_error "If narHash mismatch, fix flake.lock BEFORE running installer:"
+        log_error "  cd $SRC_DIR && nix flake lock --refresh"
         exit 1
     fi
+    log_ok "Build successful"
 else
     log_warn "Skipping build test prior to install (SKIP_BUILD_TEST=1)"
 fi
 
-# Proceed to install using the built flake at $REPO_DIR
-nixos-install --flake "$REPO_DIR#$HOST" --no-root-passwd
+# Install from TARGET_DIR
+nixos-install --flake "$EVAL_DIR#$HOST" --no-root-passwd
 
 # ====== STEP 9: Set passwords ======
 log_info "Setting user passwords..."
@@ -398,17 +374,19 @@ echo ""
 log_warn "You will now set the root password:"
 nixos-enter --root /mnt -c 'passwd root'
 
-# Get username from flake.nix
-FLAKE_USER=$(grep -oP 'username = "\K[^"]+' "$REPO_DIR/flake.nix" | head -1)
+# Get username from EVAL_DIR/flake.nix (the copied tree)
+FLAKE_USER=$(grep -oP 'username = "\K[^"]+' "$EVAL_DIR/flake.nix" | head -1)
 if [[ -z "$FLAKE_USER" || "$FLAKE_USER" == "nixuser" ]]; then
     log_warn "Username is set to default 'nixuser' in flake.nix"
     read -p "Enter your desired username: " FLAKE_USER
     if [[ -z "$FLAKE_USER" ]]; then
         FLAKE_USER="nixuser"
     fi
-    # Update flake.nix with the new username in $REPO_DIR (which is $TARGET_DIR at /mnt/etc/nixos)
-    sed -i "s/username = \"nixuser\"/username = \"$FLAKE_USER\"/" "$REPO_DIR/flake.nix"
-    log_ok "Updated flake.nix with username: $FLAKE_USER"
+    # Update flake.nix ONLY in EVAL_DIR (copied tree = TARGET_DIR)
+    # Never touch the original source tree (SRC_DIR/SCRIPT_DIR)
+    sed -i "s/username = \"nixuser\"/username = \"$FLAKE_USER\"/" "$EVAL_DIR/flake.nix"
+    log_ok "Updated $EVAL_DIR/flake.nix with username: $FLAKE_USER"
+    log_warn "NOTE: Run 'sudo nixos-rebuild switch --flake /etc/nixos#$HOST' after first boot to apply username change"
 fi
 
 echo ""
