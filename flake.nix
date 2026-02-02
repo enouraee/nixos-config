@@ -10,7 +10,7 @@
     };
   };
 
-  outputs = { nixpkgs, self, ... }@inputs:
+  outputs = { self, nixpkgs, home-manager, ... }@inputs:
     let
       # ====== CONFIGURATION ======
       # IMPORTANT: Change this to your desired username before installing!
@@ -23,14 +23,17 @@
       };
     in
     {
+      # NixOS configurations - expose hosts here
       nixosConfigurations = {
         # ExpertBook host (laptop)
         expertbook = nixpkgs.lib.nixosSystem {
           inherit system;
-          modules = [ ./hosts/expertbook ];
+          modules = [
+            ./hosts/expertbook
+          ];
           specialArgs = {
             host = "expertbook";
-            inherit self inputs username;
+            inherit self inputs home-manager username;
           };
         };
 
