@@ -310,24 +310,62 @@ nixos-generate-config --root /mnt --show-hardware-config > /tmp/hardware-config.
 cp /tmp/hardware-config.nix "$SCRIPT_DIR/hosts/$HOST/hardware-configuration.nix"
 log_ok "Hardware configuration generated"
 
-# Update hardware config with correct LUKS device
-log_info "Updating LUKS configuration in hardware-configuration.nix..."
+# Update hardware config with correct LUKS device (safe insertion)
+log_info "Safely inserting LUKS configuration into hardware-configuration.nix..."
 
 # Get the UUID of the encrypted partition
 LUKS_UUID=$(blkid -s UUID -o value "$ROOT_PART")
 
-# Patch the hardware configuration
-cat >> "$SCRIPT_DIR/hosts/$HOST/hardware-configuration.nix" << EOF
+HW_FILE="$SCRIPT_DIR/hosts/$HOST/hardware-configuration.nix"
+BACKUP_FILE="$HW_FILE.bak"
+TMP_FILE="$HW_FILE.new"
 
-  # LUKS encryption (auto-configured by install.sh)
-  boot.initrd.luks.devices."$MAPPER_NAME" = {
-    device = "/dev/disk/by-uuid/$LUKS_UUID";
-    preLVM = true;
-    allowDiscards = true;
-  };
-EOF
+# Backup original
+cp "$HW_FILE" "$BACKUP_FILE"
 
-log_ok "LUKS configuration added"
+# Prepare insertion block (an attrset, placed before the final closing brace)
+read -r -d '' LUKS_BLOCK <<'LUKS_EOF'
+    # LUKS encryption (auto-configured by install.sh)
+    boot.initrd.luks.devices = {
+        cryptroot = {
+            device = "/dev/disk/by-uuid/REPLACE_UUID";
+            preLVM = true;
+            allowDiscards = true;
+        };
+    };
+LUKS_EOF
+
+# substitute the UUID placeholder
+LUKS_BLOCK=${LUKS_BLOCK//REPLACE_UUID/$LUKS_UUID}
+
+# Find the last line that contains only a closing brace '}' (possibly with spaces)
+LAST_BRACE_LINE=$(grep -n '^[[:space:]]*}[[:space:]]*$' "$HW_FILE" | tail -n1 | cut -d: -f1 || true)
+if [[ -z "$LAST_BRACE_LINE" ]]; then
+    log_error "Could not locate final closing brace in $HW_FILE; aborting to avoid corrupting file"
+    mv "$BACKUP_FILE" "$HW_FILE" 2>/dev/null || true
+    exit 1
+fi
+
+# Insert the block BEFORE the final closing brace
+awk -v ins="$LUKS_BLOCK" -v line="$LAST_BRACE_LINE" 'NR==line{printf "%s\n", ins; print $0; next} {print}' "$HW_FILE" > "$TMP_FILE"
+
+# Validate the new file with nix parser
+if command -v nix-instantiate &>/dev/null; then
+    if ! nix-instantiate --parse "$TMP_FILE" &>/dev/null; then
+        log_error "nix-instantiate --parse failed for modified hardware-configuration.nix"
+        echo "Restoring backup and aborting. Check syntax in $TMP_FILE"
+        mv "$BACKUP_FILE" "$HW_FILE"
+        rm -f "$TMP_FILE"
+        exit 1
+    fi
+else
+    log_warn "nix-instantiate not found; skipping parse validation (install will continue)"
+fi
+
+# Move validated file into place
+mv "$TMP_FILE" "$HW_FILE"
+rm -f "$BACKUP_FILE"
+log_ok "LUKS configuration inserted and validated"
 
 # ====== STEP 7: Clone config to target ======
 log_step "Step 7/8: Copying configuration to /mnt..."
