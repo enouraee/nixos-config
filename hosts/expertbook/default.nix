@@ -46,7 +46,7 @@
     # ====== LUKS ENCRYPTION ======
     # UUID is replaced by install.sh during installation
     initrd.luks.devices."cryptroot" = {
-      device = "/dev/disk/by-uuid/__LUKS_UUID_PLACEHOLDER__";
+      device = "/dev/disk/by-uuid/cb8f465d-b795-472a-b3ab-73195652055d";
       preLVM = true;
       allowDiscards = true;
     };

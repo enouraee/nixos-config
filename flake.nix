@@ -14,7 +14,7 @@
     let
       # ====== CONFIGURATION ======
       # IMPORTANT: Change this to your desired username before installing!
-      username = "nixuser";  # <-- SET YOUR USERNAME HERE
+      username = "initdaddy";  # <-- SET YOUR USERNAME HERE
       system = "x86_64-linux";
 
       pkgs = import nixpkgs {
