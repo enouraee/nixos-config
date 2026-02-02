@@ -58,6 +58,29 @@ A minimal, clean NixOS configuration with Hyprland window manager.
 6. The installer will prompt for passwords automatically
 7. Reboot and enjoy!
 
+### Install Script Options
+
+The install script includes preflight checks and safety guards:
+
+```bash
+# Standard install (with all safety checks)
+sudo ./install.sh /dev/sdX
+
+# Skip build test (faster but less safe)
+SKIP_BUILD_TEST=1 sudo ./install.sh /dev/sdX
+
+# Force reformat existing partitions (DANGER!)
+FORCE=1 sudo ./install.sh /dev/sdX
+```
+
+**Preflight checks performed:**
+- ✅ `flake.lock` exists (reproducibility)
+- ✅ Network connectivity to cache.nixos.org
+- ✅ Flake metadata validation
+- ✅ Host exists in flake
+- ✅ Build test (dry-run)
+- ✅ Required tools available
+
 ### Rebuilding After Changes
 
 ```bash

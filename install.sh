@@ -3,16 +3,21 @@
 # NixOS Installation Script with LUKS Encryption
 # ================================================
 # This script will:
-#   1. Partition the disk (GPT: EFI + encrypted root)
-#   2. Setup LUKS encryption on root partition
-#   3. Format filesystems (FAT32 for EFI, ext4 for root)
-#   4. Mount partitions
-#   5. Generate hardware configuration
-#   6. Install NixOS with this flake
+#   1. Run preflight checks (network, flake validation, build test)
+#   2. Partition the disk (GPT: EFI + encrypted root)
+#   3. Setup LUKS encryption on root partition
+#   4. Format filesystems (FAT32 for EFI, ext4 for root)
+#   5. Mount partitions
+#   6. Generate hardware configuration
+#   7. Install NixOS with this flake
 #
 # Usage:
 #   sudo ./install.sh /dev/sdX        # Replace sdX with your target disk
 #   sudo ./install.sh /dev/nvme0n1    # For NVMe drives
+#
+# Environment Variables:
+#   FORCE=1  - Skip partition existence check (DANGER: reformats existing partitions)
+#   SKIP_BUILD_TEST=1 - Skip the pre-install build test (faster but less safe)
 #
 # WARNING: This will ERASE ALL DATA on the target disk!
 
@@ -23,6 +28,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Configuration
@@ -30,10 +36,100 @@ HOST="expertbook"                    # Change if using different host
 EFI_SIZE="512M"                      # EFI partition size
 MAPPER_NAME="cryptroot"              # LUKS mapper name
 
+# Get the script's directory (where the flake is)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 log_info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_step()  { echo -e "${CYAN}[STEP]${NC} $1"; }
+
+# ====== PREFLIGHT CHECKS ======
+preflight_checks() {
+    log_step "Running preflight checks..."
+    local failed=0
+    
+    # Check 1: flake.lock exists
+    if [[ ! -f "$SCRIPT_DIR/flake.lock" ]]; then
+        log_error "PREFLIGHT FAILED: flake.lock not found!"
+        echo "  This is required for reproducible builds."
+        echo "  Run: cd $SCRIPT_DIR && nix flake lock"
+        failed=1
+    else
+        log_ok "flake.lock exists"
+    fi
+    
+    # Check 2: Network connectivity (required for nixos-install)
+    if ! ping -c 1 -W 3 cache.nixos.org &>/dev/null; then
+        log_error "PREFLIGHT FAILED: Cannot reach cache.nixos.org"
+        echo "  Network connection is required for installation."
+        echo "  Check your network configuration."
+        failed=1
+    else
+        log_ok "Network connectivity OK (cache.nixos.org reachable)"
+    fi
+    
+    # Check 3: Validate flake metadata
+    log_info "Validating flake metadata..."
+    if ! nix flake metadata "$SCRIPT_DIR" &>/dev/null; then
+        log_error "PREFLIGHT FAILED: Flake metadata validation failed!"
+        echo "  The flake may have syntax errors or invalid inputs."
+        echo "  Run: nix flake check $SCRIPT_DIR"
+        failed=1
+    else
+        log_ok "Flake metadata valid"
+    fi
+    
+    # Check 4: Verify host exists in flake
+    if ! nix flake show "$SCRIPT_DIR" 2>/dev/null | grep -q "nixosConfigurations.*$HOST"; then
+        # Try alternative check
+        if ! nix eval "$SCRIPT_DIR#nixosConfigurations.$HOST" --apply 'x: true' 2>/dev/null; then
+            log_error "PREFLIGHT FAILED: Host '$HOST' not found in flake!"
+            echo "  Available hosts:"
+            nix flake show "$SCRIPT_DIR" 2>/dev/null | grep nixosConfigurations || echo "  (none found)"
+            failed=1
+        else
+            log_ok "Host '$HOST' found in flake"
+        fi
+    else
+        log_ok "Host '$HOST' found in flake"
+    fi
+    
+    # Check 5: Build test (optional but recommended)
+    if [[ "${SKIP_BUILD_TEST:-0}" != "1" ]]; then
+        log_info "Running build test (this may take a while)..."
+        echo "  Set SKIP_BUILD_TEST=1 to skip this check."
+        if ! nix build "$SCRIPT_DIR#nixosConfigurations.$HOST.config.system.build.toplevel" --dry-run 2>/dev/null; then
+            log_error "PREFLIGHT FAILED: Build test failed!"
+            echo "  The configuration has errors that would cause install to fail."
+            echo "  Fix the errors and try again."
+            failed=1
+        else
+            log_ok "Build test passed (dry-run successful)"
+        fi
+    else
+        log_warn "Skipping build test (SKIP_BUILD_TEST=1)"
+    fi
+    
+    # Check 6: Required tools
+    for cmd in parted cryptsetup mkfs.vfat mkfs.ext4 nixos-install nixos-generate-config; do
+        if ! command -v "$cmd" &>/dev/null; then
+            log_error "PREFLIGHT FAILED: Required command not found: $cmd"
+            failed=1
+        fi
+    done
+    [[ $failed -eq 0 ]] && log_ok "All required tools available"
+    
+    if [[ $failed -ne 0 ]]; then
+        echo ""
+        log_error "Preflight checks failed. Fix the issues above and try again."
+        exit 1
+    fi
+    
+    log_ok "All preflight checks passed!"
+    echo ""
+}
 
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
@@ -46,6 +142,10 @@ if [[ $# -lt 1 ]]; then
     echo "Usage: $0 <disk> [host]"
     echo "  disk: Target disk (e.g., /dev/sda, /dev/nvme0n1)"
     echo "  host: Host name (default: expertbook)"
+    echo ""
+    echo "Environment variables:"
+    echo "  FORCE=1           - Force reformat even if partitions exist"
+    echo "  SKIP_BUILD_TEST=1 - Skip the pre-install build test"
     echo ""
     echo "Available disks:"
     lsblk -d -o NAME,SIZE,MODEL | grep -v loop
@@ -83,6 +183,26 @@ fi
 EFI_PART="${PART_PREFIX}1"
 ROOT_PART="${PART_PREFIX}2"
 
+# Check for existing partitions (FORCE guard)
+if [[ -b "$EFI_PART" ]] || [[ -b "$ROOT_PART" ]]; then
+    if [[ "${FORCE:-0}" != "1" ]]; then
+        log_error "Partitions already exist on $DISK!"
+        echo ""
+        echo "  Found: $EFI_PART and/or $ROOT_PART"
+        echo ""
+        echo "  If you want to REFORMAT and ERASE these partitions, run:"
+        echo "    FORCE=1 $0 $DISK $HOST"
+        echo ""
+        log_warn "This is a safety guard to prevent accidental data loss."
+        exit 1
+    else
+        log_warn "FORCE=1 set - will reformat existing partitions!"
+    fi
+fi
+
+# Run preflight checks BEFORE any destructive operations
+preflight_checks
+
 # Confirm with user
 echo ""
 echo "======================================"
@@ -93,6 +213,7 @@ echo "  Target disk:     $DISK"
 echo "  EFI partition:   $EFI_PART ($EFI_SIZE)"
 echo "  Root partition:  $ROOT_PART (LUKS encrypted)"
 echo "  Host:            $HOST"
+echo "  Flake path:      $SCRIPT_DIR"
 echo ""
 log_warn "THIS WILL ERASE ALL DATA ON $DISK!"
 echo ""
@@ -103,12 +224,12 @@ if [[ "$confirm" != "yes" ]]; then
 fi
 
 # ====== STEP 1: Unmount and close existing LUKS ======
-log_info "Cleaning up existing mounts..."
+log_step "Step 1/8: Cleaning up existing mounts..."
 umount -R /mnt 2>/dev/null || true
 cryptsetup close "$MAPPER_NAME" 2>/dev/null || true
 
 # ====== STEP 2: Partition the disk ======
-log_info "Partitioning $DISK..."
+log_step "Step 2/8: Partitioning $DISK..."
 parted -s "$DISK" -- mklabel gpt
 parted -s "$DISK" -- mkpart EFI fat32 1MiB "$EFI_SIZE"
 parted -s "$DISK" -- mkpart cryptroot "$EFI_SIZE" 100%
@@ -121,7 +242,7 @@ partprobe "$DISK"
 sleep 1
 
 # ====== STEP 3: Setup LUKS encryption ======
-log_info "Setting up LUKS encryption on $ROOT_PART..."
+log_step "Step 3/8: Setting up LUKS encryption on $ROOT_PART..."
 echo ""
 log_warn "You will be asked to create a disk encryption password."
 log_warn "REMEMBER THIS PASSWORD - you'll need it on every boot!"
@@ -134,24 +255,21 @@ cryptsetup open "$ROOT_PART" "$MAPPER_NAME"
 log_ok "LUKS setup complete"
 
 # ====== STEP 4: Format filesystems ======
-log_info "Formatting filesystems..."
+log_step "Step 4/8: Formatting filesystems..."
 mkfs.vfat -F 32 -n EFI "$EFI_PART"
 mkfs.ext4 -L nixos "/dev/mapper/$MAPPER_NAME"
 log_ok "Formatting complete"
 
 # ====== STEP 5: Mount partitions ======
-log_info "Mounting partitions..."
+log_step "Step 5/8: Mounting partitions..."
 mount "/dev/mapper/$MAPPER_NAME" /mnt
 mkdir -p /mnt/boot
 mount "$EFI_PART" /mnt/boot
 log_ok "Mounting complete"
 
 # ====== STEP 6: Generate hardware configuration ======
-log_info "Generating hardware configuration..."
+log_step "Step 6/8: Generating hardware configuration..."
 nixos-generate-config --root /mnt --show-hardware-config > /tmp/hardware-config.nix
-
-# Get the script's directory (where the flake is)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Copy generated hardware config
 cp /tmp/hardware-config.nix "$SCRIPT_DIR/hosts/$HOST/hardware-configuration.nix"
@@ -177,13 +295,18 @@ EOF
 log_ok "LUKS configuration added"
 
 # ====== STEP 7: Clone config to target ======
-log_info "Copying configuration to /mnt..."
+log_step "Step 7/8: Copying configuration to /mnt..."
 mkdir -p /mnt/etc/nixos
 cp -r "$SCRIPT_DIR"/* /mnt/etc/nixos/
+# Ensure flake.lock is copied (critical for reproducibility)
+if [[ -f "$SCRIPT_DIR/flake.lock" ]]; then
+    cp "$SCRIPT_DIR/flake.lock" /mnt/etc/nixos/flake.lock
+    log_ok "flake.lock copied (reproducible build ensured)"
+fi
 log_ok "Configuration copied"
 
 # ====== STEP 8: Install NixOS ======
-log_info "Installing NixOS (this may take a while)..."
+log_step "Step 8/8: Installing NixOS (this may take a while)..."
 echo ""
 nixos-install --flake "/mnt/etc/nixos#$HOST" --no-root-passwd
 
