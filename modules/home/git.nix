@@ -6,11 +6,14 @@
   programs.git = {
     enable = true;
 
-    # TODO: Set your identity!
-    userName = "Your Name";           # <-- CHANGE THIS
-    userEmail = "you@example.com";    # <-- CHANGE THIS
+    # Git settings (including user identity and aliases)
+    settings = {
+      # TODO: Set your identity!
+      user = {
+        name = "Your Name";           # <-- CHANGE THIS
+        email = "you@example.com";    # <-- CHANGE THIS
+      };
 
-    extraConfig = {
       init.defaultBranch = "main";
       pull.rebase = true;
       push.autoSetupRemote = true;
@@ -20,17 +23,17 @@
 
       # Credentials (use system keyring)
       credential.helper = "store";
-    };
 
-    # Useful aliases
-    aliases = {
-      st = "status";
-      co = "checkout";
-      br = "branch";
-      ci = "commit";
-      lg = "log --oneline --graph --decorate -10";
-      last = "log -1 HEAD";
-      unstage = "reset HEAD --";
+      # Useful aliases
+      aliases = {
+        st = "status";
+        co = "checkout";
+        br = "branch";
+        ci = "commit";
+        lg = "log --oneline --graph --decorate -10";
+        last = "log -1 HEAD";
+        unstage = "reset HEAD --";
+      };
     };
   };
 }

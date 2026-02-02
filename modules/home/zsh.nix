@@ -23,7 +23,7 @@
     };
 
     # Initialize completion system
-    initExtra = ''
+    initContent = ''
       # Case-insensitive completion
       zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
 
