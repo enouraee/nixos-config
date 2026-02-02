@@ -16,10 +16,12 @@
 
   # ====== LUKS ENCRYPTION ======
   # This will be configured by the install script
-  boot.initrd.luks.devices."cryptroot" = {
-    device = "/dev/disk/by-partlabel/cryptroot";
-    preLVM = true;
-    allowDiscards = true;  # Enable TRIM for SSD
+  boot.initrd.luks.devices = {
+    cryptroot = {
+      device = "/dev/disk/by-uuid/<UUID>";
+      preLVM = true;
+      allowDiscards = true;  # Enable TRIM for SSD
+    };
   };
 
   # ====== FILESYSTEMS ======
