@@ -24,7 +24,7 @@
 set -euo pipefail
 
 # Global error trap to prevent silent exits
-trap 'log_error "Error on line $LINENO: command \"$BASH_COMMAND\" failed with exit code $?"' ERR
+trap 'echo -e "\033[0;31m[ERROR]\033[0m Script failed at line $LINENO: $BASH_COMMAND (exit code $?)" >&2; exit 1' ERR
 
 # Enable flakes and nix-command (works in NixOS live/installer environments)
 export NIX_CONFIG="${NIX_CONFIG:-experimental-features = nix-command flakes}"
@@ -467,7 +467,7 @@ if [[ -z "$FLAKE_USER" || "$FLAKE_USER" == "nixuser" ]]; then
     if [[ -z "$FLAKE_USER" ]]; then
         FLAKE_USER="nixuser"
     fi
-    # Update flake.nix with the new username (in the installed location)
+    # Update flake.nix with the new username in $REPO_DIR (which is $TARGET_DIR at /mnt/etc/nixos)
     sed -i "s/username = \"nixuser\"/username = \"$FLAKE_USER\"/" "$REPO_DIR/flake.nix"
     log_ok "Updated flake.nix with username: $FLAKE_USER"
 fi
@@ -497,13 +497,3 @@ echo ""
 echo "To rebuild after changes:"
 echo "  cd /etc/nixos && sudo nixos-rebuild switch --flake .#$HOST"
 echo ""
-# After successful install, copy repo to the installed system so flake is available there
-if [[ -d /mnt ]]; then
-    log_step "Copying configuration to /mnt/etc/nixos for the installed system..."
-    mkdir -p /mnt/etc/nixos
-    cp -r "$REPO_DIR"/* /mnt/etc/nixos/
-    if [[ -f "$REPO_DIR/flake.lock" ]]; then
-        cp "$REPO_DIR/flake.lock" /mnt/etc/nixos/flake.lock
-    fi
-    log_ok "Configuration copied to installed system"
-fi
