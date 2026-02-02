@@ -292,9 +292,27 @@ log_ok "Mounting complete"
 log_step "Step 6/8: Generating hardware configuration..."
 nixos-generate-config --root /mnt --show-hardware-config > /tmp/hardware-config.nix
 
-# Copy generated hardware config
-cp /tmp/hardware-config.nix "$SCRIPT_DIR/hosts/$HOST/hardware-configuration.nix"
-log_ok "Hardware configuration generated"
+# Generated hardware config is at /tmp/hardware-config.nix
+log_ok "Hardware configuration generated (/tmp/hardware-config.nix)"
+
+# ====== COPY REPO TO TARGET ======
+log_step "Copying repository to target: $TARGET_DIR"
+rm -rf "$TARGET_DIR" || true
+mkdir -p "$TARGET_DIR"
+cp -r "$SRC_DIR"/* "$TARGET_DIR"/
+# Ensure flake.lock is copied and preserved
+if [[ -f "$SRC_DIR/flake.lock" ]]; then
+    cp "$SRC_DIR/flake.lock" "$TARGET_DIR/flake.lock"
+fi
+log_ok "Repository copied to $TARGET_DIR"
+
+# Ensure host directory exists in target and place generated hardware config there
+mkdir -p "$TARGET_DIR/hosts/$HOST"
+cp /tmp/hardware-config.nix "$TARGET_DIR/hosts/$HOST/hardware-configuration.nix"
+log_ok "Hardware configuration copied to $TARGET_DIR/hosts/$HOST/hardware-configuration.nix"
+
+# From now on use the copied tree for build/install
+REPO_DIR="$TARGET_DIR"
 
 # Update hardware config with correct LUKS device (safe insertion)
 log_info "Safely inserting LUKS configuration into hardware-configuration.nix..."
@@ -302,7 +320,14 @@ log_info "Safely inserting LUKS configuration into hardware-configuration.nix...
 # Get the UUID of the encrypted partition
 LUKS_UUID=$(blkid -s UUID -o value "$ROOT_PART")
 
-HW_FILE="$SCRIPT_DIR/hosts/$HOST/hardware-configuration.nix"
+HW_FILE="$TARGET_DIR/hosts/$HOST/hardware-configuration.nix"
+if [[ ! -f "$HW_FILE" ]]; then
+    log_error "Expected hardware configuration missing: $HW_FILE"
+    echo "Listing $TARGET_DIR:"; ls -la "$TARGET_DIR" || true
+    echo "Listing $TARGET_DIR/hosts/$HOST:"; ls -la "$TARGET_DIR/hosts/$HOST" || true
+    echo "Aborting to avoid corrupting non-existent file."
+    exit 1
+fi
 BACKUP_FILE="$HW_FILE.bak"
 TMP_FILE="$HW_FILE.new"
 
