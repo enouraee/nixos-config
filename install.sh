@@ -41,6 +41,8 @@ MAPPER_NAME="cryptroot"              # LUKS mapper name
 
 # Get the script's directory (where the flake is)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Use a single canonical repo path for all flake operations
+REPO_DIR="${REPO_DIR:-$SCRIPT_DIR}"
 
 log_info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
@@ -76,24 +78,24 @@ preflight_checks() {
     # Check 3: Validate flake metadata
     log_info "Validating flake metadata..."
     local metadata_output
-    if ! metadata_output=$(nix flake metadata "$SCRIPT_DIR" 2>&1); then
+    log_info "Using flake at: $REPO_DIR"
+    # show metadata (best-effort) to help debugging
+    nix flake metadata "$REPO_DIR" 2>/dev/null || true
+    if ! metadata_output=$(nix flake metadata "$REPO_DIR" 2>&1); then
         log_error "PREFLIGHT FAILED: Flake metadata validation failed!"
         echo "  The flake may have syntax errors or invalid inputs."
         
         # Check for narHash mismatch
         if echo "$metadata_output" | grep -q "narHash"; then
             echo ""
-            log_warn "Detected narHash mismatch in flake.lock!"
-            echo "  Your flake.lock is inconsistent with the actual inputs."
-            echo ""
-            echo "  Fix with:"
-            echo "    ./scripts/flake-lock-refresh.sh"
-            echo "  Or manually:"
-            echo "    nix flake lock --refresh"
-            echo "  Or delete flake.lock and run:"
-            echo "    nix flake lock"
+            log_error "Detected narHash mismatch in flake.lock!"
+            echo "  Your flake.lock is inconsistent with the actual inputs. Fix before installing."
+            echo "  Preferred fix: ./scripts/flake-lock-refresh.sh"
+            echo "  Or: nix flake lock --refresh"
+            echo "  After fixing, re-run this installer."
+            exit 2
         fi
-        
+
         failed=1
     else
         log_ok "Flake metadata valid"
@@ -127,15 +129,18 @@ preflight_checks() {
         echo "  Set SKIP_BUILD_TEST=1 to skip this check."
         
         local build_output
-        if ! build_output=$(nix build "$SCRIPT_DIR#nixosConfigurations.$HOST.config.system.build.toplevel" -L 2>&1); then
+        if ! build_output=$(nix build "$REPO_DIR#nixosConfigurations.$HOST.config.system.build.toplevel" -L 2>&1); then
             log_error "PREFLIGHT FAILED: Build test failed!"
             echo "  The configuration has errors that would cause install to fail."
             
             # Check for narHash mismatch in build output too
             if echo "$build_output" | grep -q "narHash"; then
                 echo ""
-                log_warn "Detected narHash mismatch during build!"
-                echo "  Run: ./scripts/flake-lock-refresh.sh"
+                log_error "Detected narHash mismatch during build!"
+                echo "  Your flake.lock is inconsistent with the actual inputs. Fix before installing."
+                echo "  Preferred fix: ./scripts/flake-lock-refresh.sh"
+                echo "  Or: nix flake lock --refresh"
+                exit 2
             fi
             
             echo "  Fix the errors and try again."
@@ -390,21 +395,13 @@ rm -f "$BACKUP_FILE"
 rm -f "$CLEANED_FILE"
 log_ok "LUKS configuration inserted and validated"
 
-# ====== STEP 7: Clone config to target ======
-log_step "Step 7/8: Copying configuration to /mnt..."
-mkdir -p /mnt/etc/nixos
-cp -r "$SCRIPT_DIR"/* /mnt/etc/nixos/
-# Ensure flake.lock is copied (critical for reproducibility)
-if [[ -f "$SCRIPT_DIR/flake.lock" ]]; then
-    cp "$SCRIPT_DIR/flake.lock" /mnt/etc/nixos/flake.lock
-    log_ok "flake.lock copied (reproducible build ensured)"
-fi
-log_ok "Configuration copied"
+# NOTE: do not copy repository to /mnt until after build/install to avoid mixing flake sources
+# We'll copy the configuration after a successful install so the installed system has the flake
 
 # ====== STEP 8: Install NixOS ======
 log_step "Step 8/8: Installing NixOS (this may take a while)..."
 echo ""
-nixos-install --flake "/mnt/etc/nixos#$HOST" --no-root-passwd
+nixos-install --flake "$REPO_DIR#$HOST" --no-root-passwd
 
 # ====== STEP 9: Set passwords ======
 log_info "Setting user passwords..."
@@ -450,3 +447,13 @@ echo ""
 echo "To rebuild after changes:"
 echo "  cd /etc/nixos && sudo nixos-rebuild switch --flake .#$HOST"
 echo ""
+# After successful install, copy repo to the installed system so flake is available there
+if [[ -d /mnt ]]; then
+    log_step "Copying configuration to /mnt/etc/nixos for the installed system..."
+    mkdir -p /mnt/etc/nixos
+    cp -r "$REPO_DIR"/* /mnt/etc/nixos/
+    if [[ -f "$REPO_DIR/flake.lock" ]]; then
+        cp "$REPO_DIR/flake.lock" /mnt/etc/nixos/flake.lock
+    fi
+    log_ok "Configuration copied to installed system"
+fi
