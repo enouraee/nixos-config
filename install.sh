@@ -23,6 +23,9 @@
 
 set -euo pipefail
 
+# Enable flakes and nix-command (works in NixOS live/installer environments)
+export NIX_CONFIG="${NIX_CONFIG:-experimental-features = nix-command flakes}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -72,41 +75,73 @@ preflight_checks() {
     
     # Check 3: Validate flake metadata
     log_info "Validating flake metadata..."
-    if ! nix flake metadata "$SCRIPT_DIR" &>/dev/null; then
+    local metadata_output
+    if ! metadata_output=$(nix flake metadata "$SCRIPT_DIR" 2>&1); then
         log_error "PREFLIGHT FAILED: Flake metadata validation failed!"
         echo "  The flake may have syntax errors or invalid inputs."
-        echo "  Run: nix flake check $SCRIPT_DIR"
+        
+        # Check for narHash mismatch
+        if echo "$metadata_output" | grep -q "narHash"; then
+            echo ""
+            log_warn "Detected narHash mismatch in flake.lock!"
+            echo "  Your flake.lock is inconsistent with the actual inputs."
+            echo ""
+            echo "  Fix with:"
+            echo "    ./scripts/flake-lock-refresh.sh"
+            echo "  Or manually:"
+            echo "    nix flake lock --refresh"
+            echo "  Or delete flake.lock and run:"
+            echo "    nix flake lock"
+        fi
+        
         failed=1
     else
         log_ok "Flake metadata valid"
     fi
     
-    # Check 4: Verify host exists in flake
-    if ! nix flake show "$SCRIPT_DIR" 2>/dev/null | grep -q "nixosConfigurations.*$HOST"; then
-        # Try alternative check
-        if ! nix eval "$SCRIPT_DIR#nixosConfigurations.$HOST" --apply 'x: true' 2>/dev/null; then
+    # Check 4: Verify host exists in flake (use nix flake show --json)
+    log_info "Checking if host '$HOST' exists in flake..."
+    local flake_json
+    if flake_json=$(nix flake show --json "$SCRIPT_DIR" 2>/dev/null); then
+        if echo "$flake_json" | grep -q "\"nixosConfigurations\".*\"$HOST\""; then
+            log_ok "Host '$HOST' found in flake"
+        else
             log_error "PREFLIGHT FAILED: Host '$HOST' not found in flake!"
             echo "  Available hosts:"
-            nix flake show "$SCRIPT_DIR" 2>/dev/null | grep nixosConfigurations || echo "  (none found)"
+            echo "$flake_json" | grep -o '"nixosConfigurations":{[^}]*}' | grep -o '"[^"]*":' | grep -v nixosConfigurations || echo "  (none found)"
             failed=1
-        else
-            log_ok "Host '$HOST' found in flake"
         fi
     else
-        log_ok "Host '$HOST' found in flake"
+        log_warn "Could not parse flake output, trying alternative check..."
+        if nix eval "$SCRIPT_DIR#nixosConfigurations.$HOST.config.system.name" &>/dev/null; then
+            log_ok "Host '$HOST' found in flake (via eval)"
+        else
+            log_error "PREFLIGHT FAILED: Host '$HOST' not found in flake!"
+            failed=1
+        fi
     fi
     
     # Check 5: Build test (optional but recommended)
     if [[ "${SKIP_BUILD_TEST:-0}" != "1" ]]; then
         log_info "Running build test (this may take a while)..."
         echo "  Set SKIP_BUILD_TEST=1 to skip this check."
-        if ! nix build "$SCRIPT_DIR#nixosConfigurations.$HOST.config.system.build.toplevel" --dry-run 2>/dev/null; then
+        
+        local build_output
+        if ! build_output=$(nix build "$SCRIPT_DIR#nixosConfigurations.$HOST.config.system.build.toplevel" -L 2>&1); then
             log_error "PREFLIGHT FAILED: Build test failed!"
             echo "  The configuration has errors that would cause install to fail."
+            
+            # Check for narHash mismatch in build output too
+            if echo "$build_output" | grep -q "narHash"; then
+                echo ""
+                log_warn "Detected narHash mismatch during build!"
+                echo "  Run: ./scripts/flake-lock-refresh.sh"
+            fi
+            
             echo "  Fix the errors and try again."
             failed=1
         else
-            log_ok "Build test passed (dry-run successful)"
+            log_ok "Build test passed"
         fi
     else
         log_warn "Skipping build test (SKIP_BUILD_TEST=1)"

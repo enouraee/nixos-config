@@ -290,9 +290,37 @@ systemctl --user restart pipewire pipewire-pulse
 # Check for errors
 sudo nixos-rebuild switch --flake .#expertbook 2>&1 | less
 
-# Sometimes helps to update flake.lock
-nix flake update
+# Update flake inputs
+./scripts/flake-update.sh
 ```
+
+### narHash mismatch error
+
+If you see an error like "mismatch in field 'narHash'", your flake.lock is inconsistent:
+
+```bash
+# Fix it with:
+./scripts/flake-lock-refresh.sh
+
+# Or manually:
+nix flake lock --refresh
+
+# Or delete flake.lock and regenerate:
+rm flake.lock && nix flake lock
+```
+
+## Helper Scripts
+
+The repository includes helper scripts for common operations:
+
+| Script | Purpose |
+|--------|---------|
+| `./scripts/flake-check.sh` | Run flake checks to validate configuration |
+| `./scripts/flake-build-expertbook.sh` | Build the expertbook configuration |
+| `./scripts/flake-lock-refresh.sh` | Refresh flake.lock (fixes narHash mismatches) |
+| `./scripts/flake-update.sh` | Update all flake inputs to latest versions |
+
+All scripts automatically enable flakes (work in NixOS live/installer environments).
 
 ## Customization Ideas
 
