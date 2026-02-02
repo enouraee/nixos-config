@@ -322,12 +322,33 @@ TMP_FILE="$HW_FILE.new"
 
 # Backup original
 cp "$HW_FILE" "$BACKUP_FILE"
+# Remove any previous auto-generated LUKS block (from the marker comment to the following closing '};')
+# Write cleaned content to a working file we will modify
+CLEANED_FILE="$HW_FILE.cleaned"
+# Remove previous auto-generated LUKS block by parsing brace depth after the marker comment
+awk '
+    BEGIN { inblock=0; depth=0 }
+    /^[[:space:]]*# LUKS encryption \(auto-configured by install.sh\)/ {
+        inblock=1; depth=0; next
+    }
+    inblock {
+        # count braces on this line
+        o = gsub(/\{/, "&")
+        c = gsub(/\}/, "&")
+        depth += o - c
+        # if we've seen braces and depth <= 0, the block is closed; stop skipping
+        if (depth <= 0) { inblock=0; next }
+        next
+    }
+    { print }
+' "$HW_FILE" > "$CLEANED_FILE"
 
 # Prepare insertion block (an attrset, placed before the final closing brace)
+
 read -r -d '' LUKS_BLOCK <<'LUKS_EOF'
     # LUKS encryption (auto-configured by install.sh)
     boot.initrd.luks.devices = {
-        cryptroot = {
+        "REPLACE_NAME" = {
             device = "/dev/disk/by-uuid/REPLACE_UUID";
             preLVM = true;
             allowDiscards = true;
@@ -335,19 +356,20 @@ read -r -d '' LUKS_BLOCK <<'LUKS_EOF'
     };
 LUKS_EOF
 
-# substitute the UUID placeholder
+# substitute placeholders
 LUKS_BLOCK=${LUKS_BLOCK//REPLACE_UUID/$LUKS_UUID}
+LUKS_BLOCK=${LUKS_BLOCK//REPLACE_NAME/$MAPPER_NAME}
 
-# Find the last line that contains only a closing brace '}' (possibly with spaces)
-LAST_BRACE_LINE=$(grep -n '^[[:space:]]*}[[:space:]]*$' "$HW_FILE" | tail -n1 | cut -d: -f1 || true)
+# Find the last line that contains only a closing brace '}' (possibly with spaces) in cleaned file
+LAST_BRACE_LINE=$(grep -n '^[[:space:]]*}[[:space:]]*$' "$CLEANED_FILE" | tail -n1 | cut -d: -f1 || true)
 if [[ -z "$LAST_BRACE_LINE" ]]; then
     log_error "Could not locate final closing brace in $HW_FILE; aborting to avoid corrupting file"
     mv "$BACKUP_FILE" "$HW_FILE" 2>/dev/null || true
     exit 1
 fi
 
-# Insert the block BEFORE the final closing brace
-awk -v ins="$LUKS_BLOCK" -v line="$LAST_BRACE_LINE" 'NR==line{printf "%s\n", ins; print $0; next} {print}' "$HW_FILE" > "$TMP_FILE"
+# Insert the block BEFORE the final closing brace in the cleaned file
+awk -v ins="$LUKS_BLOCK" -v line="$LAST_BRACE_LINE" 'NR==line{printf "%s\n", ins; print $0; next} {print}' "$CLEANED_FILE" > "$TMP_FILE"
 
 # Validate the new file with nix parser
 if command -v nix-instantiate &>/dev/null; then
@@ -365,6 +387,7 @@ fi
 # Move validated file into place
 mv "$TMP_FILE" "$HW_FILE"
 rm -f "$BACKUP_FILE"
+rm -f "$CLEANED_FILE"
 log_ok "LUKS configuration inserted and validated"
 
 # ====== STEP 7: Clone config to target ======
