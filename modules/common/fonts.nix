@@ -9,7 +9,8 @@
     noto-fonts-color-emoji
 
     # Programming fonts with Nerd Font icons
-    (nerdfonts.override { fonts = [ "JetBrainsMono" "FiraCode" ]; })
+    nerd-fonts.jetbrains-mono
+    nerd-fonts.fira-code
     jetbrains-mono
 
     # UI icons (for waybar, etc.)
