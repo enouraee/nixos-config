@@ -314,93 +314,34 @@ log_ok "Hardware configuration copied to $TARGET_DIR/hosts/$HOST/hardware-config
 # From now on use the copied tree for build/install
 REPO_DIR="$TARGET_DIR"
 
-# Update hardware config with correct LUKS device (safe insertion)
-log_info "Safely inserting LUKS configuration into hardware-configuration.nix..."
+# ====== STEP 7: Replace LUKS UUID placeholder ======
+log_step "Step 7/8: Configuring LUKS UUID..."
 
 # Get the UUID of the encrypted partition
 LUKS_UUID=$(blkid -s UUID -o value "$ROOT_PART")
-
-HW_FILE="$TARGET_DIR/hosts/$HOST/hardware-configuration.nix"
-if [[ ! -f "$HW_FILE" ]]; then
-    log_error "Expected hardware configuration missing: $HW_FILE"
-    echo "Listing $TARGET_DIR:"; ls -la "$TARGET_DIR" || true
-    echo "Listing $TARGET_DIR/hosts/$HOST:"; ls -la "$TARGET_DIR/hosts/$HOST" || true
-    echo "Aborting to avoid corrupting non-existent file."
+if [[ -z "$LUKS_UUID" ]]; then
+    log_error "Failed to get UUID for $ROOT_PART"
     exit 1
 fi
-BACKUP_FILE="$HW_FILE.bak"
-TMP_FILE="$HW_FILE.new"
+log_info "LUKS partition UUID: $LUKS_UUID"
 
-# Backup original
-cp "$HW_FILE" "$BACKUP_FILE"
-# Remove any previous auto-generated LUKS block (from the marker comment to the following closing '};')
-# Write cleaned content to a working file we will modify
-CLEANED_FILE="$HW_FILE.cleaned"
-# Remove previous auto-generated LUKS block by parsing brace depth after the marker comment
-awk -f - "$HW_FILE" > "$CLEANED_FILE" <<'AWK_EOF'
-BEGIN { inblock=0; depth=0 }
-/^[[:space:]]*# LUKS encryption \(auto-configured by install.sh\)/ {
-    inblock=1; depth=0; next
-}
-inblock {
-    # count braces on this line
-    o = gsub(/\{/, "&")
-    c = gsub(/\}/, "&")
-    depth += o - c
-    # if we've seen braces and depth <= 0, the block is closed; stop skipping
-    if (depth <= 0) { inblock=0; next }
-    next
-}
-{ print }
-AWK_EOF
-
-# Prepare insertion block (an attrset, placed before the final closing brace)
-# NOTE: Using heredoc assignment instead of 'read -r -d ""' which breaks under set -e
-LUKS_BLOCK=$(cat <<'LUKS_EOF'
-    # LUKS encryption (auto-configured by install.sh)
-    boot.initrd.luks.devices = {
-        "REPLACE_NAME" = {
-            device = "/dev/disk/by-uuid/REPLACE_UUID";
-            preLVM = true;
-            allowDiscards = true;
-        };
-    };
-LUKS_EOF
-)
-
-# substitute placeholders
-LUKS_BLOCK=${LUKS_BLOCK//REPLACE_UUID/$LUKS_UUID}
-LUKS_BLOCK=${LUKS_BLOCK//REPLACE_NAME/$MAPPER_NAME}
-
-# Find the last line that contains only a closing brace '}' (possibly with spaces) in cleaned file
-LAST_BRACE_LINE=$(grep -n '^[[:space:]]*}[[:space:]]*$' "$CLEANED_FILE" | tail -n1 | cut -d: -f1 || true)
-if [[ -z "$LAST_BRACE_LINE" ]]; then
-    log_error "Could not locate final closing brace in $HW_FILE; aborting to avoid corrupting file"
-    mv "$BACKUP_FILE" "$HW_FILE" 2>/dev/null || true
+# Replace placeholder in host default.nix (simple string replacement)
+HOST_FILE="$TARGET_DIR/hosts/$HOST/default.nix"
+if [[ ! -f "$HOST_FILE" ]]; then
+    log_error "Host configuration missing: $HOST_FILE"
     exit 1
 fi
 
-# Insert the block BEFORE the final closing brace in the cleaned file
-awk -v ins="$LUKS_BLOCK" -v line="$LAST_BRACE_LINE" 'NR==line{printf "%s\n", ins; print $0; next} {print}' "$CLEANED_FILE" > "$TMP_FILE"
-
-# Validate the new file with nix parser
-if command -v nix-instantiate &>/dev/null; then
-    if ! nix-instantiate --parse "$TMP_FILE" &>/dev/null; then
-        log_error "nix-instantiate --parse failed for modified hardware-configuration.nix"
-        echo "Restoring backup and aborting. Check syntax in $TMP_FILE"
-        mv "$BACKUP_FILE" "$HW_FILE"
-        rm -f "$TMP_FILE"
-        exit 1
-    fi
-else
-    log_warn "nix-instantiate not found; skipping parse validation (install will continue)"
+# Verify placeholder exists before replacement
+if ! grep -q "__LUKS_UUID_PLACEHOLDER__" "$HOST_FILE"; then
+    log_error "LUKS UUID placeholder not found in $HOST_FILE"
+    log_error "Expected: __LUKS_UUID_PLACEHOLDER__"
+    exit 1
 fi
 
-# Move validated file into place
-mv "$TMP_FILE" "$HW_FILE"
-rm -f "$BACKUP_FILE"
-rm -f "$CLEANED_FILE"
-log_ok "LUKS configuration inserted and validated"
+# Replace placeholder with actual UUID
+sed -i "s/__LUKS_UUID_PLACEHOLDER__/$LUKS_UUID/g" "$HOST_FILE"
+log_ok "LUKS UUID configured in $HOST_FILE"
 
 # Function: try build, on narHash failure run nix flake lock --refresh in $REPO_DIR and retry once
 build_with_lock_refresh() {

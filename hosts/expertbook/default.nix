@@ -42,5 +42,13 @@
     extraModulePackages = with config.boot.kernelPackages; [
       acpi_call
     ];
+
+    # ====== LUKS ENCRYPTION ======
+    # UUID is replaced by install.sh during installation
+    initrd.luks.devices."cryptroot" = {
+      device = "/dev/disk/by-uuid/__LUKS_UUID_PLACEHOLDER__";
+      preLVM = true;
+      allowDiscards = true;
+    };
   };
 }
