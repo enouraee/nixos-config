@@ -23,6 +23,9 @@
 
 set -euo pipefail
 
+# Global error trap to prevent silent exits
+trap 'log_error "Error on line $LINENO: command \"$BASH_COMMAND\" failed with exit code $?"' ERR
+
 # Enable flakes and nix-command (works in NixOS live/installer environments)
 export NIX_CONFIG="${NIX_CONFIG:-experimental-features = nix-command flakes}"
 
@@ -401,20 +404,6 @@ rm -f "$BACKUP_FILE"
 rm -f "$CLEANED_FILE"
 log_ok "LUKS configuration inserted and validated"
 
-# ====== COPY CONFIG TO TARGET ======
-log_step "Copying configuration to target: $TARGET_DIR"
-rm -rf "$TARGET_DIR" || true
-mkdir -p "$TARGET_DIR"
-cp -r "$SRC_DIR"/* "$TARGET_DIR"/
-# Ensure flake.lock is copied and not regenerated
-if [[ -f "$SRC_DIR/flake.lock" ]]; then
-    cp "$SRC_DIR/flake.lock" "$TARGET_DIR/flake.lock"
-fi
-log_ok "Configuration copied to $TARGET_DIR"
-
-# From now on, use the copied tree for build/install to avoid narHash mismatches
-REPO_DIR="$TARGET_DIR"
-
 # Function: try build, on narHash failure run nix flake lock --refresh in $REPO_DIR and retry once
 build_with_lock_refresh() {
     local target="$1"
@@ -471,15 +460,15 @@ log_warn "You will now set the root password:"
 nixos-enter --root /mnt -c 'passwd root'
 
 # Get username from flake.nix
-FLAKE_USER=$(grep -oP 'username = "\K[^"]+' "$SCRIPT_DIR/flake.nix" | head -1)
+FLAKE_USER=$(grep -oP 'username = "\K[^"]+' "$REPO_DIR/flake.nix" | head -1)
 if [[ -z "$FLAKE_USER" || "$FLAKE_USER" == "nixuser" ]]; then
     log_warn "Username is set to default 'nixuser' in flake.nix"
     read -p "Enter your desired username: " FLAKE_USER
     if [[ -z "$FLAKE_USER" ]]; then
         FLAKE_USER="nixuser"
     fi
-    # Update flake.nix with the new username
-    sed -i "s/username = \"nixuser\"/username = \"$FLAKE_USER\"/" "$SCRIPT_DIR/flake.nix"
+    # Update flake.nix with the new username (in the installed location)
+    sed -i "s/username = \"nixuser\"/username = \"$FLAKE_USER\"/" "$REPO_DIR/flake.nix"
     log_ok "Updated flake.nix with username: $FLAKE_USER"
 fi
 
