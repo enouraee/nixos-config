@@ -15,14 +15,8 @@
   boot.extraModulePackages = [ ];
 
   # ====== LUKS ENCRYPTION ======
-  # This will be configured by the install script
-  boot.initrd.luks.devices = {
-    cryptroot = {
-      device = "/dev/disk/by-uuid/<UUID>";
-      preLVM = true;
-      allowDiscards = true;  # Enable TRIM for SSD
-    };
-  };
+  # LUKS device is configured in default.nix (not here) to avoid conflicts
+  # The placeholder __LUKS_UUID_PLACEHOLDER__ is replaced by install.sh
 
   # ====== FILESYSTEMS ======
   # These will be auto-generated, but here's a template:
