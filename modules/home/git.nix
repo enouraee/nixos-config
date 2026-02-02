@@ -24,8 +24,8 @@
       # Credentials (use system keyring)
       credential.helper = "store";
 
-      # Useful aliases
-      aliases = {
+      # Useful aliases (Home Manager uses 'alias' not 'aliases')
+      alias = {
         st = "status";
         co = "checkout";
         br = "branch";

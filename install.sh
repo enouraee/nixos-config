@@ -23,8 +23,8 @@
 
 set -euo pipefail
 
-# Global error trap to prevent silent exits
-trap 'echo -e "\033[0;31m[ERROR]\033[0m Script failed at line $LINENO: $BASH_COMMAND (exit code $?)" >&2; exit 1' ERR
+# Global error trap to prevent silent exits - outputs to stderr
+trap 'echo -e "\n\033[0;31m[ERROR]\033[0m line $LINENO: $BASH_COMMAND" >&2' ERR
 
 # Enable flakes and nix-command (works in NixOS live/installer environments)
 export NIX_CONFIG="${NIX_CONFIG:-experimental-features = nix-command flakes}"
@@ -302,12 +302,9 @@ log_ok "Hardware configuration generated (/tmp/hardware-config.nix)"
 log_step "Copying repository to target: $TARGET_DIR"
 rm -rf "$TARGET_DIR" || true
 mkdir -p "$TARGET_DIR"
-cp -r "$SRC_DIR"/* "$TARGET_DIR"/
-# Ensure flake.lock is copied and preserved
-if [[ -f "$SRC_DIR/flake.lock" ]]; then
-    cp "$SRC_DIR/flake.lock" "$TARGET_DIR/flake.lock"
-fi
-log_ok "Repository copied to $TARGET_DIR"
+# Use cp -a to preserve attributes and include dotfiles
+cp -a "$SRC_DIR"/. "$TARGET_DIR"/
+log_ok "Repository copied to $TARGET_DIR (including dotfiles)"
 
 # Ensure host directory exists in target and place generated hardware config there
 mkdir -p "$TARGET_DIR/hosts/$HOST"
@@ -358,8 +355,8 @@ inblock {
 AWK_EOF
 
 # Prepare insertion block (an attrset, placed before the final closing brace)
-
-read -r -d '' LUKS_BLOCK <<'LUKS_EOF'
+# NOTE: Using heredoc assignment instead of 'read -r -d ""' which breaks under set -e
+LUKS_BLOCK=$(cat <<'LUKS_EOF'
     # LUKS encryption (auto-configured by install.sh)
     boot.initrd.luks.devices = {
         "REPLACE_NAME" = {
@@ -369,6 +366,7 @@ read -r -d '' LUKS_BLOCK <<'LUKS_EOF'
         };
     };
 LUKS_EOF
+)
 
 # substitute placeholders
 LUKS_BLOCK=${LUKS_BLOCK//REPLACE_UUID/$LUKS_UUID}
