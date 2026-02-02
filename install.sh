@@ -337,22 +337,22 @@ cp "$HW_FILE" "$BACKUP_FILE"
 # Write cleaned content to a working file we will modify
 CLEANED_FILE="$HW_FILE.cleaned"
 # Remove previous auto-generated LUKS block by parsing brace depth after the marker comment
-awk '
-    BEGIN { inblock=0; depth=0 }
-    /^[[:space:]]*# LUKS encryption \(auto-configured by install.sh\)/ {
-        inblock=1; depth=0; next
-    }
-    inblock {
-        # count braces on this line
-        o = gsub(/\{/, "&")
-        c = gsub(/\}/, "&")
-        depth += o - c
-        # if we've seen braces and depth <= 0, the block is closed; stop skipping
-        if (depth <= 0) { inblock=0; next }
-        next
-    }
-    { print }
-' "$HW_FILE" > "$CLEANED_FILE"
+awk -f - "$HW_FILE" > "$CLEANED_FILE" <<'AWK_EOF'
+BEGIN { inblock=0; depth=0 }
+/^[[:space:]]*# LUKS encryption \(auto-configured by install.sh\)/ {
+    inblock=1; depth=0; next
+}
+inblock {
+    # count braces on this line
+    o = gsub(/\{/, "&")
+    c = gsub(/\}/, "&")
+    depth += o - c
+    # if we've seen braces and depth <= 0, the block is closed; stop skipping
+    if (depth <= 0) { inblock=0; next }
+    next
+}
+{ print }
+AWK_EOF
 
 # Prepare insertion block (an attrset, placed before the final closing brace)
 
