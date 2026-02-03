@@ -5,41 +5,41 @@
   wayland.windowManager.hyprland.settings = {
     windowrule = [
       # Float certain windows
-      "floating:1, class:^(imv)$"                        # Image viewer
-      "floating:1, class:^(mpv)$"                        # Video player
-      "floating:1, class:^(pavucontrol)$"                # Volume control
-      "floating:1, class:^(nm-connection-editor)$"       # Network manager
-      "floating:1, class:^(org.gnome.Calculator)$"       # Calculator
-      "floating:1, class:^(file-roller)$"                # Archive manager
-      "floating:1, title:^(Picture-in-Picture)$"         # PiP windows
+      "float on, match:class ^(imv)$"                        # Image viewer
+      "float on, match:class ^(mpv)$"                        # Video player
+      "float on, match:class ^(pavucontrol)$"                # Volume control
+      "float on, match:class ^(nm-connection-editor)$"       # Network manager
+      "float on, match:class ^(org.gnome.Calculator)$"       # Calculator
+      "float on, match:class ^(file-roller)$"                # Archive manager
+      "float on, match:title ^(Picture-in-Picture)$"         # PiP windows
 
       # Pin PiP
-      "pinned:1, title:^(Picture-in-Picture)$"
+      "pin on, match:title ^(Picture-in-Picture)$"
 
       # Workspace assignments (customize as needed)
-      # "workspace 1, class:^(firefox)$"
-      # "workspace 2, class:^(kitty)$"
-      # "workspace 3, class:^(code)$"
-      # "workspace 10, class:^(discord)$"
+      # "workspace 1, match:class ^(firefox)$"
+      # "workspace 2, match:class ^(kitty)$"
+      # "workspace 3, match:class ^(code)$"
+      # "workspace 10, match:class ^(discord)$"
 
       # Idle inhibit for video
-      "idleinhibit focus, class:^(mpv)$"
-      "idleinhibit fullscreen, class:^(firefox)$"
-      "idleinhibit fullscreen, class:^(google-chrome)$"
+      "idle_inhibit focus, match:class ^(mpv)$"
+      "idle_inhibit fullscreen, match:class ^(firefox)$"
+      "idle_inhibit fullscreen, match:class ^(google-chrome)$"
 
       # XWayland windows get no rounded corners
-      "rounding 0, xwayland:1"
+      "rounding 0, match:xwayland true"
 
       # No gaps when only one window
-      "bordersize 0, floating:0, onworkspace:w[tv1]"
-      "rounding 0, floating:0, onworkspace:w[tv1]"
-      "bordersize 0, floating:0, onworkspace:f[1]"
-      "rounding 0, floating:0, onworkspace:f[1]"
+      "border_size 0, match:float false, match:workspace w[tv1]"
+      "rounding 0, match:float false, match:workspace w[tv1]"
+      "border_size 0, match:float false, match:workspace f[1]"
+      "rounding 0, match:float false, match:workspace f[1]"
     ];
 
     layerrule = [
       # Dim around launcher
-      "dimaround:1, class:^(wofi)$"
+      "dim_around on, match:namespace ^(wofi)$"
     ];
 
     # No gaps when only one tiled window
