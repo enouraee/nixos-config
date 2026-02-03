@@ -24,11 +24,7 @@
     # Auto-mount USB drives
     udisks2.enable = true;
 
-    # Docker daemon
-    virtualisation.docker = {
-      enable = true;
-      # Optionally configure additional settings here (storage driver, extraOptions)
-    };
+    # Docker daemon is configured at top-level (see below)
 
     # Power management
     upower.enable = true;
@@ -36,6 +32,14 @@
     # Don't shutdown on short power button press
     logind.settings.Login = {
       HandlePowerKey = "ignore";
+    };
+  };
+
+  # Virtualisation settings
+  virtualisation = {
+    docker = {
+      enable = true;
+      # Optionally configure additional settings here (storage driver, extraOptions)
     };
   };
 }
