@@ -1,6 +1,6 @@
 # modules/home/default.nix
 # Main entry point for Home Manager modules
-{ ... }:
+{ host, ... }:
 {
   imports = [
     ./hyprland               # Hyprland window manager config
@@ -10,5 +10,5 @@
     ./kitty.nix              # Terminal emulator
     ./git.nix                # Git configuration
     ./xdg.nix                # XDG directories and mimes
-  ];
+  ] ++ (if host == "expertbook" then [ ./hyprland/monitors-expertbook-fhd.nix ] else []);
 }

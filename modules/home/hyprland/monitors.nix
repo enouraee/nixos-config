@@ -3,8 +3,8 @@
 { pkgs, ... }:
 {
   wayland.windowManager.hyprland = {
-    # Default: auto-detect monitors
-    settings.monitor = [ ",preferred,auto,auto" ];
+    # Default: do not set monitor here so host-specific profiles
+    # may provide monitor configuration (e.g. ExpertBook profile).
 
     # Allow external monitor config files
     # Create ~/.config/hypr/monitors.conf for custom setup
