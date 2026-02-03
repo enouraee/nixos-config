@@ -44,6 +44,8 @@
     htop
     unzip
     file
+    docker
+    docker-compose-plugin
   ];
 
   # NixOS version (update when upgrading)

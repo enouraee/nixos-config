@@ -24,6 +24,12 @@
     # Auto-mount USB drives
     udisks2.enable = true;
 
+    # Docker daemon
+    docker = {
+      enable = true;
+      # Optionally configure additional settings here (storage driver, extraOptions)
+    };
+
     # Power management
     upower.enable = true;
 
