@@ -5,16 +5,16 @@
   wayland.windowManager.hyprland.settings = {
     windowrule = [
       # Float certain windows
-      "float, class:^(imv)$"                        # Image viewer
-      "float, class:^(mpv)$"                        # Video player
-      "float, class:^(pavucontrol)$"                # Volume control
-      "float, class:^(nm-connection-editor)$"       # Network manager
-      "float, class:^(org.gnome.Calculator)$"       # Calculator
-      "float, class:^(file-roller)$"                # Archive manager
-      "float, title:^(Picture-in-Picture)$"         # PiP windows
+      "floating:1, class:^(imv)$"                        # Image viewer
+      "floating:1, class:^(mpv)$"                        # Video player
+      "floating:1, class:^(pavucontrol)$"                # Volume control
+      "floating:1, class:^(nm-connection-editor)$"       # Network manager
+      "floating:1, class:^(org.gnome.Calculator)$"       # Calculator
+      "floating:1, class:^(file-roller)$"                # Archive manager
+      "floating:1, title:^(Picture-in-Picture)$"         # PiP windows
 
       # Pin PiP
-      "pin, title:^(Picture-in-Picture)$"
+      "pinned:1, title:^(Picture-in-Picture)$"
 
       # Workspace assignments (customize as needed)
       # "workspace 1, class:^(firefox)$"
@@ -39,7 +39,7 @@
 
     layerrule = [
       # Dim around launcher
-      "dimaround, wofi"
+      "dimaround:1, class:^(wofi)$"
     ];
 
     # No gaps when only one tiled window
