@@ -1,58 +1,36 @@
 # modules/home/gtk.nix
-# GTK theming
+# GTK theming - Stylix handles theme/cursor, we only add extra packages/settings
 { pkgs, ... }:
 {
-  # GTK packages
+  # Additional icon packages (Stylix handles base GTK theme)
   home.packages = with pkgs; [
     adwaita-icon-theme
     papirus-icon-theme
   ];
 
-  # GTK configuration
+  # GTK configuration - let Stylix manage theme, we add extras
   gtk = {
     enable = true;
 
-    # Theme
-    theme = {
-      name = "Adwaita-dark";
-      package = pkgs.gnome-themes-extra;
-    };
-
-    # Icons
+    # Icons (supplement Stylix's theming)
     iconTheme = {
       name = "Papirus-Dark";
       package = pkgs.papirus-icon-theme;
     };
 
-    # Font
-    font = {
-      name = "JetBrains Mono";
-      size = 10;
-    };
-
-    # GTK3 settings
+    # GTK3 extra settings
     gtk3.extraConfig = {
       gtk-application-prefer-dark-theme = true;
     };
 
-    # GTK4 settings
+    # GTK4 extra settings
     gtk4.extraConfig = {
       gtk-application-prefer-dark-theme = true;
     };
   };
 
-  # Cursor
-  home.pointerCursor = {
-    name = "Adwaita";
-    package = pkgs.adwaita-icon-theme;
-    size = 24;
-    gtk.enable = true;
-    x11.enable = true;
-  };
+  # Cursor is managed by Stylix (home.pointerCursor)
+  # Do not set home.pointerCursor here to avoid conflicts
 
-  # Qt theming (use GTK theme)
-  qt = {
-    enable = true;
-    platformTheme.name = "gtk";
-  };
+  # Qt theming is managed by Stylix - do not set here to avoid conflicts
 }

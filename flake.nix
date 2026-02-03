@@ -8,9 +8,12 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Stylix - system-wide theming (Base16)
+    stylix.url = "github:danth/stylix";
   };
 
-  outputs = { self, nixpkgs, home-manager, ... }@inputs:
+  outputs = { self, nixpkgs, home-manager, stylix, ... }@inputs:
     let
       # ====== CONFIGURATION ======
       # IMPORTANT: Change this to your desired username before installing!
@@ -21,6 +24,12 @@
         inherit system;
         config.allowUnfree = true;
       };
+
+      # Common modules for all hosts (includes stylix theming)
+      commonModules = [
+        stylix.nixosModules.stylix
+        ./modules/theme/stylix-default.nix
+      ];
     in
     {
       # NixOS configurations - expose hosts here
@@ -28,7 +37,7 @@
         # ExpertBook host (laptop)
         expertbook = nixpkgs.lib.nixosSystem {
           inherit system;
-          modules = [
+          modules = commonModules ++ [
             ./hosts/expertbook
           ];
           specialArgs = {
@@ -41,7 +50,7 @@
         # Example:
         # desktop = nixpkgs.lib.nixosSystem {
         #   inherit system;
-        #   modules = [ ./hosts/desktop ];
+        #   modules = commonModules ++ [ ./hosts/desktop ];
         #   specialArgs = {
         #     host = "desktop";
         #     inherit self inputs username;

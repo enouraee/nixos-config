@@ -1,19 +1,13 @@
 # modules/home/kitty.nix
 # Kitty terminal emulator
+# Note: Colors, fonts, and opacity are managed by Stylix
 { ... }:
 {
   programs.kitty = {
     enable = true;
 
     settings = {
-      # Font
-      font_family = "JetBrainsMono Nerd Font";
-      font_size = 11;
-      bold_font = "auto";
-      italic_font = "auto";
-      bold_italic_font = "auto";
-
-      # Cursor
+      # Cursor behavior (not colors - stylix handles those)
       cursor_shape = "beam";
       cursor_blink_interval = 0;
 
@@ -31,38 +25,10 @@
       url_style = "curly";
       detect_urls = true;
 
-      # Background
-      background_opacity = "0.95";
-
-      # ====== COLORS (Catppuccin Macchiato) ======
-      foreground = "#cad3f5";
-      background = "#24273a";
-      selection_foreground = "#24273a";
-      selection_background = "#f4dbd6";
-
-      # Cursor
-      cursor = "#f4dbd6";
-      cursor_text_color = "#24273a";
-
-      # Normal colors
-      color0 = "#494d64";   # Black
-      color1 = "#ed8796";   # Red
-      color2 = "#a6da95";   # Green
-      color3 = "#eed49f";   # Yellow
-      color4 = "#8aadf4";   # Blue
-      color5 = "#f5bde6";   # Magenta
-      color6 = "#8bd5ca";   # Cyan
-      color7 = "#b8c0e0";   # White
-
-      # Bright colors
-      color8 = "#5b6078";
-      color9 = "#ed8796";
-      color10 = "#a6da95";
-      color11 = "#eed49f";
-      color12 = "#8aadf4";
-      color13 = "#f5bde6";
-      color14 = "#8bd5ca";
-      color15 = "#a5adcb";
+      # Font settings managed by Stylix, only set style preferences here
+      bold_font = "auto";
+      italic_font = "auto";
+      bold_italic_font = "auto";
     };
   };
 }

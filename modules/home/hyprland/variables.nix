@@ -1,6 +1,6 @@
 # modules/home/hyprland/variables.nix
 # Environment variables for Wayland/Hyprland
-{ ... }:
+{ lib, ... }:
 {
   home.sessionVariables = {
     # ====== WAYLAND ======
@@ -17,7 +17,7 @@
     # ====== QT THEMING ======
     QT_AUTO_SCREEN_SCALE_FACTOR = "1";
     QT_WAYLAND_DISABLE_WINDOWDECORATION = "1";
-    QT_QPA_PLATFORMTHEME = "gtk2";    # Use GTK theme for Qt
+    # QT_QPA_PLATFORMTHEME is managed by Stylix
 
     # ====== ELECTRON/CHROMIUM ======
     NIXOS_OZONE_WL = "1";             # Force Wayland for Electron apps
