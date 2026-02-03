@@ -25,7 +25,7 @@
     udisks2.enable = true;
 
     # Docker daemon
-    docker = {
+    virtualisation.docker = {
       enable = true;
       # Optionally configure additional settings here (storage driver, extraOptions)
     };
