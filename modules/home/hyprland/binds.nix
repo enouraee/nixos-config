@@ -18,8 +18,8 @@
       "$mod, Q, killactive,"                               # Close window
 
       # ====== WINDOW MANAGEMENT ======
-      "$mod, F, fullscreen, 0"                             # Fullscreen
-      "$mod SHIFT, F, fullscreen, 1"                       # Maximize
+      "$mod SHIFT, F, fullscreen, 0"                       # Fullscreen (moved to SUPER+SHIFT+F to avoid Chrome conflict)
+      "$mod, M, fullscreen, 1"                             # Maximize (moved to SUPER+M)
       "$mod, Space, togglefloating,"                       # Toggle float
       "$mod, P, pseudo,"                                   # Dwindle pseudo
       "$mod, X, togglesplit,"                              # Toggle split direction
